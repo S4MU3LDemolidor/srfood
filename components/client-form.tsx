@@ -1,17 +1,20 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createClient, updateClient } from "@/lib/data-manager"
 import type { Client } from "@/lib/types"
-import { Camera, Upload, X } from "lucide-react"
+import { Camera, Upload, X } from 'lucide-react'
 
 interface ClientFormProps {
   client?: Client
 }
+
+const STORAGE_KEY = 'client-form-draft'
 
 export function ClientForm({ client }: ClientFormProps) {
   const router = useRouter()
@@ -25,10 +28,50 @@ export function ClientForm({ client }: ClientFormProps) {
     logo_url: client?.logo_url || "",
   })
 
+  // Load saved form data from localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && !client) {
+      try {
+        const savedData = localStorage.getItem(STORAGE_KEY)
+        if (savedData) {
+          const parsedData = JSON.parse(savedData)
+          console.log("📥 CLIENT FORM: Loading saved draft data:", parsedData)
+          setFormData(parsedData)
+          setImagePreview(parsedData.logo_url || "")
+        }
+      } catch (error) {
+        console.error("❌ CLIENT FORM: Error loading saved data:", error)
+      }
+    }
+  }, [client])
+
+  // Save form data to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && !client && (formData.name || formData.logo_url)) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(formData))
+        console.log("💾 CLIENT FORM: Auto-saved draft data:", formData)
+      } catch (error) {
+        console.error("❌ CLIENT FORM: Error saving draft data:", error)
+      }
+    }
+  }, [formData, client])
+
+  // Clear saved draft data from localStorage
+  const clearSavedData = () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+        console.log("🗑️ CLIENT FORM: Cleared saved draft data")
+      } catch (error) {
+        console.error("❌ CLIENT FORM: Error clearing saved data:", error)
+      }
+    }
+  }
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      // Convert file to base64 for preview and storage
       const reader = new FileReader()
       reader.onload = (e) => {
         const result = e.target?.result as string
@@ -69,49 +112,63 @@ export function ClientForm({ client }: ClientFormProps) {
 
     try {
       if (client) {
-        // Update existing client
+        // Update existing client - directly use data manager
         console.log("📝 CLIENT FORM: Updating existing client:", client.id)
-        const response = await fetch(`/api/clients/${client.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        })
+        const updatedClient = updateClient(client.id, formData)
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("❌ CLIENT FORM: Update failed:", errorText)
+        if (!updatedClient) {
           throw new Error("Failed to update client")
         }
 
-        console.log("✅ CLIENT FORM: Client updated successfully")
+        console.log("✅ CLIENT FORM: Client updated successfully:", updatedClient)
+
+        // Dispatch events to notify other components
+        console.log("📡 CLIENT FORM: Dispatching update events...")
+        window.dispatchEvent(new CustomEvent("dataChanged", { detail: { type: 'client', action: 'update' } }))
+        window.dispatchEvent(new StorageEvent("storage", { key: "clients" }))
+
+        // Navigate back
         router.push("/clients")
       } else {
-        // Create new client
+        // Create new client - directly use data manager
         console.log("🆕 CLIENT FORM: Creating new client")
-        console.log("📤 CLIENT FORM: Sending data to API:", JSON.stringify(formData, null, 2))
+        console.log("📤 CLIENT FORM: Using data manager directly:", JSON.stringify(formData, null, 2))
 
-        const response = await fetch("/api/clients", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        })
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("❌ CLIENT FORM: Create failed:", errorText)
-          throw new Error("Failed to create client")
-        }
-
-        const newClient = await response.json()
+        const newClient = createClient(formData)
         console.log("✅ CLIENT FORM: Client created successfully:", newClient)
+
+        // Clear the saved draft data since we successfully created the client
+        clearSavedData()
+
+        // Dispatch events to notify other components BEFORE navigation
+        console.log("📡 CLIENT FORM: Dispatching creation events...")
+        window.dispatchEvent(new CustomEvent("dataChanged", { 
+          detail: { type: 'client', action: 'create', data: newClient } 
+        }))
+        window.dispatchEvent(new StorageEvent("storage", { key: "clients" }))
+
+        // Small delay to ensure events are processed
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        // Navigate back to clients page
+        console.log("🔄 CLIENT FORM: Navigating back to clients page...")
         router.push("/clients")
       }
+
     } catch (error) {
       console.error("❌ CLIENT FORM: Error saving client:", error)
       alert("Erro ao salvar cliente. Tente novamente.")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleCancel = () => {
+    // Clear saved draft data when canceling
+    if (!client) {
+      clearSavedData()
+    }
+    router.back()
   }
 
   return (
@@ -204,7 +261,7 @@ export function ClientForm({ client }: ClientFormProps) {
         <Button type="submit" disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
           {loading ? "Salvando..." : client ? "Atualizar Cliente" : "Criar Cliente"}
         </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">
+        <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
           Cancelar
         </Button>
       </div>

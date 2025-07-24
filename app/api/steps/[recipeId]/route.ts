@@ -3,7 +3,7 @@ import { getStepsByRecipeId, createStep } from "@/lib/data-manager"
 
 export async function GET(request: Request, { params }: { params: { recipeId: string } }) {
   try {
-    const steps = await getStepsByRecipeId(params.recipeId)
+    const steps = getStepsByRecipeId(params.recipeId)
     return NextResponse.json(steps)
   } catch (error) {
     console.error("Error fetching steps:", error)
@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: { recipeId: st
 export async function POST(request: Request, { params }: { params: { recipeId: string } }) {
   try {
     const body = await request.json()
-    const step = await createStep({
+    const step = createStep({
       ...body,
       ficha_id: params.recipeId,
     })

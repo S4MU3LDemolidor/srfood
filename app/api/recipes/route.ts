@@ -3,7 +3,7 @@ import { getRecipesWithClients, createRecipe } from "@/lib/data-manager"
 
 export async function GET() {
   try {
-    const recipes = await getRecipesWithClients()
+    const recipes = getRecipesWithClients()
     return NextResponse.json(recipes)
   } catch (error) {
     console.error("Error fetching recipes:", error)
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     console.log("✅ API: Creating recipe with data:", body)
-    const recipe = await createRecipe(body)
+    const recipe = createRecipe(body)
     console.log("✅ API: Recipe created successfully:", recipe.id, recipe.nome_receita)
 
     // Make sure we return the complete recipe object with ID

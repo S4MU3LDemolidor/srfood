@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getRecipeById, getIngredientsByRecipeId, getRecipes, createIngredient, deleteIngredient } from "@/lib/data-manager"
 import type { Recipe, Ingredient } from "@/lib/types"
-import { ArrowLeft, Plus, Trash2, GripVertical, AlertCircle } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, GripVertical, AlertCircle } from 'lucide-react'
 
 export default function IngredientsPage({ params }: { params: { id: string } }) {
   const [recipe, setRecipe] = useState<Recipe | null>(null)
@@ -33,32 +34,24 @@ export default function IngredientsPage({ params }: { params: { id: string } }) 
       setError(null)
 
       // Fetch recipe details
-      const recipeResponse = await fetch(`/api/recipes/${params.id}`)
-      if (!recipeResponse.ok) {
-        throw new Error(`Recipe not found: ${recipeResponse.status}`)
+      const recipeData = getRecipeById(params.id)
+      if (!recipeData) {
+        throw new Error("Recipe not found")
       }
-      const recipeData = await recipeResponse.json()
       setRecipe(recipeData)
 
       // Fetch ingredients
-      const ingredientsResponse = await fetch(`/api/ingredients/${params.id}`)
-      if (!ingredientsResponse.ok) {
-        throw new Error(`Failed to fetch ingredients: ${ingredientsResponse.status}`)
-      }
-      const ingredientsData = await ingredientsResponse.json()
-      setIngredients(Array.isArray(ingredientsData) ? ingredientsData : [])
+      const ingredientsData = getIngredientsByRecipeId(params.id)
+      setIngredients(ingredientsData)
 
       // Fetch all recipes for subficha selection
-      const recipesResponse = await fetch("/api/recipes")
-      if (recipesResponse.ok) {
-        const recipesData = await recipesResponse.json()
-        const subfichas = Array.isArray(recipesData)
-          ? recipesData.filter((r: Recipe) => r.id !== params.id && r.tipo_ficha === "Subficha")
-          : []
-        setRecipes(subfichas)
-      }
+      const recipesData = getRecipes()
+      const subfichas = recipesData.filter((r: Recipe) => r.id !== params.id && r.tipo_ficha === "Subficha")
+      setRecipes(subfichas)
+
+      console.log("✅ INGREDIENTS PAGE: Data loaded successfully")
     } catch (error) {
-      console.error("Error fetching data:", error)
+      console.error("❌ INGREDIENTS PAGE: Error fetching data:", error)
       setError(error instanceof Error ? error.message : "Erro ao carregar dados")
     } finally {
       setLoading(false)
@@ -71,24 +64,15 @@ export default function IngredientsPage({ params }: { params: { id: string } }) 
     setSaving(true)
     try {
       const ingredientData = {
+        ficha_id: params.id,
         ingrediente: newIngredient.ingrediente,
         quantidade: newIngredient.quantidade,
         medida_caseira: newIngredient.medida_caseira,
-        subficha_id: newIngredient.subficha_id === "none" ? null : newIngredient.subficha_id,
+        subficha_id: newIngredient.subficha_id === "none" ? undefined : newIngredient.subficha_id,
         ordem: ingredients.length + 1,
       }
 
-      const response = await fetch(`/api/ingredients/${params.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ingredientData),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to add ingredient: ${response.status}`)
-      }
-
-      const ingredient = await response.json()
+      const ingredient = createIngredient(ingredientData)
       setIngredients([...ingredients, ingredient])
       setNewIngredient({
         ingrediente: "",
@@ -96,27 +80,27 @@ export default function IngredientsPage({ params }: { params: { id: string } }) 
         medida_caseira: "",
         subficha_id: "none",
       })
+
+      console.log("✅ INGREDIENTS PAGE: Ingredient added successfully")
     } catch (error) {
-      console.error("Error adding ingredient:", error)
+      console.error("❌ INGREDIENTS PAGE: Error adding ingredient:", error)
       alert("Erro ao adicionar ingrediente. Tente novamente.")
     } finally {
       setSaving(false)
     }
   }
 
-  const deleteIngredient = async (id: string) => {
+  const removeIngredient = async (id: string) => {
     try {
-      const response = await fetch(`/api/ingredients/item/${id}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete ingredient: ${response.status}`)
+      const success = deleteIngredient(id)
+      if (success) {
+        setIngredients(ingredients.filter((ing) => ing.id !== id))
+        console.log("✅ INGREDIENTS PAGE: Ingredient deleted successfully")
+      } else {
+        throw new Error("Failed to delete ingredient")
       }
-
-      setIngredients(ingredients.filter((ing) => ing.id !== id))
     } catch (error) {
-      console.error("Error deleting ingredient:", error)
+      console.error("❌ INGREDIENTS PAGE: Error deleting ingredient:", error)
       alert("Erro ao remover ingrediente. Tente novamente.")
     }
   }
@@ -295,7 +279,7 @@ export default function IngredientsPage({ params }: { params: { id: string } }) 
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => deleteIngredient(ingredient.id)}
+                    onClick={() => removeIngredient(ingredient.id)}
                     className="text-red-600 hover:text-red-700 hover:bg-red-50"
                   >
                     <Trash2 className="w-4 h-4" />

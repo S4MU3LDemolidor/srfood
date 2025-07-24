@@ -14,28 +14,24 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadClient() {
-      try {
-        console.log("🔍 EDIT CLIENT PAGE: Loading client:", params.id)
-        const clientData = await getClientById(params.id)
+    try {
+      console.log("🔍 EDIT CLIENT PAGE: Loading client:", params.id)
+      const clientData = getClientById(params.id)
 
-        console.log("✅ EDIT CLIENT PAGE: Client loaded:", clientData?.name)
+      console.log("✅ EDIT CLIENT PAGE: Client loaded:", clientData?.name)
 
-        if (!clientData) {
-          setError("Cliente não encontrado")
-          return
-        }
-
-        setClient(clientData)
-      } catch (error) {
-        console.error("❌ EDIT CLIENT PAGE: Error loading client:", error)
-        setError("Erro ao carregar cliente")
-      } finally {
-        setLoading(false)
+      if (!clientData) {
+        setError("Cliente não encontrado")
+        return
       }
-    }
 
-    loadClient()
+      setClient(clientData)
+    } catch (error) {
+      console.error("❌ EDIT CLIENT PAGE: Error loading client:", error)
+      setError("Erro ao carregar cliente")
+    } finally {
+      setLoading(false)
+    }
   }, [params.id])
 
   if (loading) {

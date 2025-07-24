@@ -15,31 +15,28 @@ export default function EditRecipePage({ params }: { params: { id: string } }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        console.log("🔍 EDIT RECIPE PAGE: Loading data for recipe:", params.id)
+    try {
+      console.log("🔍 EDIT RECIPE PAGE: Loading data for recipe:", params.id)
 
-        const [recipeData, clientsData] = await Promise.all([getRecipeWithDetails(params.id), getClients()])
+      const recipeData = getRecipeWithDetails(params.id)
+      const clientsData = getClients()
 
-        console.log("✅ EDIT RECIPE PAGE: Recipe loaded:", recipeData?.nome_receita)
-        console.log("✅ EDIT RECIPE PAGE: Clients loaded:", clientsData.length)
+      console.log("✅ EDIT RECIPE PAGE: Recipe loaded:", recipeData?.nome_receita)
+      console.log("✅ EDIT RECIPE PAGE: Clients loaded:", clientsData.length)
 
-        if (!recipeData) {
-          setError("Receita não encontrada")
-          return
-        }
-
-        setRecipe(recipeData)
-        setClients(clientsData)
-      } catch (error) {
-        console.error("❌ EDIT RECIPE PAGE: Error loading data:", error)
-        setError("Erro ao carregar dados")
-      } finally {
-        setLoading(false)
+      if (!recipeData) {
+        setError("Receita não encontrada")
+        return
       }
-    }
 
-    loadData()
+      setRecipe(recipeData)
+      setClients(clientsData)
+    } catch (error) {
+      console.error("❌ EDIT RECIPE PAGE: Error loading data:", error)
+      setError("Erro ao carregar dados")
+    } finally {
+      setLoading(false)
+    }
   }, [params.id])
 
   if (loading) {

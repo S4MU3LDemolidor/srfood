@@ -7,8 +7,9 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { getRecipeById, getStepsByRecipeId, createStep, deleteStep } from "@/lib/data-manager"
 import type { Recipe, Step } from "@/lib/types"
-import { ArrowLeft, Plus, Trash2, GripVertical, Camera, Upload, X, AlertCircle } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, GripVertical, Camera, Upload, X, AlertCircle } from 'lucide-react'
 
 export default function StepsPage({ params }: { params: { id: string } }) {
   const [recipe, setRecipe] = useState<Recipe | null>(null)
@@ -34,22 +35,19 @@ export default function StepsPage({ params }: { params: { id: string } }) {
       setError(null)
 
       // Fetch recipe details
-      const recipeResponse = await fetch(`/api/recipes/${params.id}`)
-      if (!recipeResponse.ok) {
-        throw new Error(`Recipe not found: ${recipeResponse.status}`)
+      const recipeData = getRecipeById(params.id)
+      if (!recipeData) {
+        throw new Error("Recipe not found")
       }
-      const recipeData = await recipeResponse.json()
       setRecipe(recipeData)
 
       // Fetch steps
-      const stepsResponse = await fetch(`/api/steps/${params.id}`)
-      if (!stepsResponse.ok) {
-        throw new Error(`Failed to fetch steps: ${stepsResponse.status}`)
-      }
-      const stepsData = await stepsResponse.json()
-      setSteps(Array.isArray(stepsData) ? stepsData : [])
+      const stepsData = getStepsByRecipeId(params.id)
+      setSteps(stepsData)
+
+      console.log("✅ STEPS PAGE: Data loaded successfully")
     } catch (error) {
-      console.error("Error fetching data:", error)
+      console.error("❌ STEPS PAGE: Error fetching data:", error)
       setError(error instanceof Error ? error.message : "Erro ao carregar dados")
     } finally {
       setLoading(false)
@@ -94,44 +92,38 @@ export default function StepsPage({ params }: { params: { id: string } }) {
 
     setSaving(true)
     try {
-      const response = await fetch(`/api/steps/${params.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...newStep,
-          ordem: steps.length + 1,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to add step: ${response.status}`)
+      const stepData = {
+        ficha_id: params.id,
+        passo: newStep.passo,
+        foto_url: newStep.foto_url,
+        ordem: steps.length + 1,
       }
 
-      const step = await response.json()
+      const step = createStep(stepData)
       setSteps([...steps, step])
       setNewStep({ passo: "", foto_url: "" })
       setImagePreview("")
+
+      console.log("✅ STEPS PAGE: Step added successfully")
     } catch (error) {
-      console.error("Error adding step:", error)
+      console.error("❌ STEPS PAGE: Error adding step:", error)
       alert("Erro ao adicionar passo. Tente novamente.")
     } finally {
       setSaving(false)
     }
   }
 
-  const deleteStep = async (id: string) => {
+  const removeStep = async (id: string) => {
     try {
-      const response = await fetch(`/api/steps/item/${id}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete step: ${response.status}`)
+      const success = deleteStep(id)
+      if (success) {
+        setSteps(steps.filter((step) => step.id !== id))
+        console.log("✅ STEPS PAGE: Step deleted successfully")
+      } else {
+        throw new Error("Failed to delete step")
       }
-
-      setSteps(steps.filter((step) => step.id !== id))
     } catch (error) {
-      console.error("Error deleting step:", error)
+      console.error("❌ STEPS PAGE: Error deleting step:", error)
       alert("Erro ao remover passo. Tente novamente.")
     }
   }
@@ -322,7 +314,7 @@ export default function StepsPage({ params }: { params: { id: string } }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteStep(step.id)}
+                      onClick={() => removeStep(step.id)}
                       className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
                     >
                       <Trash2 className="w-4 h-4" />

@@ -3,7 +3,7 @@ import { getRecipeWithDetails, updateRecipe, deleteRecipe } from "@/lib/data-man
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
-    const recipe = await getRecipeWithDetails(params.id)
+    const recipe = getRecipeWithDetails(params.id)
     if (!recipe) {
       return NextResponse.json({ error: "Recipe not found" }, { status: 404 })
     }
@@ -17,7 +17,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     const body = await request.json()
-    const recipe = await updateRecipe(params.id, body)
+    const recipe = updateRecipe(params.id, body)
     if (!recipe) {
       return NextResponse.json({ error: "Recipe not found" }, { status: 404 })
     }
@@ -39,7 +39,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     }
 
     console.log(`API: Calling deleteRecipe with ID: ${params.id}`)
-    const success = await deleteRecipe(params.id)
+    const success = deleteRecipe(params.id)
 
     console.log(`API: deleteRecipe returned: ${success}`)
 

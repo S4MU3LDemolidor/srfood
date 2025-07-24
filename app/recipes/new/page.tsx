@@ -17,21 +17,17 @@ export default function NewRecipePage() {
     console.log("🎯 NEW RECIPE PAGE: Component mounted successfully!")
     console.log("🎯 NEW RECIPE PAGE: This is the correct /recipes/new route")
 
-    async function loadClients() {
-      try {
-        console.log("🔍 NEW RECIPE PAGE: Loading clients...")
-        const clientsData = await getClients()
-        console.log("✅ NEW RECIPE PAGE: Clients loaded:", clientsData.length)
-        setClients(clientsData)
-      } catch (error) {
-        console.error("❌ NEW RECIPE PAGE: Error loading clients:", error)
-        setError("Erro ao carregar clientes")
-      } finally {
-        setLoading(false)
-      }
+    try {
+      console.log("🔍 NEW RECIPE PAGE: Loading clients...")
+      const clientsData = getClients()
+      console.log("✅ NEW RECIPE PAGE: Clients loaded:", clientsData.length)
+      setClients(clientsData)
+    } catch (error) {
+      console.error("❌ NEW RECIPE PAGE: Error loading clients:", error)
+      setError("Erro ao carregar clientes")
+    } finally {
+      setLoading(false)
     }
-
-    loadClients()
   }, [])
 
   if (loading) {

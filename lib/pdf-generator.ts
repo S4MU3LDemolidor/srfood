@@ -102,14 +102,51 @@ export async function generateRecipePDF(recipe: Recipe): Promise<Blob> {
     yPosition += 45
   }
 
-  // Recipe title
+  // Recipe title and image section
   pdf.setTextColor(...textColor)
   pdf.setFontSize(16)
   pdf.setFont("helvetica", "bold")
   pdf.text(recipe.nome_receita, 20, yPosition)
   yPosition += 15
 
+  // Add recipe image if available
+  if (recipe.foto_produto_url) {
+    try {
+      const img = await loadImage(recipe.foto_produto_url)
+      const { width, height } = calculateImageDimensions(img.width, img.height, 80, 60)
+
+      // Add a subtle border around the image
+      pdf.setDrawColor(200, 200, 200)
+      pdf.setLineWidth(0.5)
+      pdf.rect(20, yPosition, width + 2, height + 2)
+
+      // Add the recipe image
+      pdf.addImage(recipe.foto_produto_url, "JPEG", 21, yPosition + 1, width, height)
+
+      // Add caption
+      pdf.setFontSize(8)
+      pdf.setTextColor(100, 100, 100)
+      pdf.text("Foto da Receita", 20, yPosition + height + 8)
+
+      yPosition += height + 15
+    } catch (error) {
+      console.log("Could not add recipe image to PDF:", error)
+      // Fallback: show placeholder
+      pdf.setFillColor(240, 240, 240)
+      pdf.setDrawColor(200, 200, 200)
+      pdf.rect(20, yPosition, 80, 60, "FD")
+
+      pdf.setFontSize(8)
+      pdf.setTextColor(100, 100, 100)
+      pdf.text("[FOTO DA RECEITA]", 25, yPosition + 25)
+      pdf.text("Imagem não disponível", 25, yPosition + 35)
+
+      yPosition += 70
+    }
+  }
+
   // Recipe details
+  pdf.setTextColor(...textColor)
   pdf.setFontSize(10)
   pdf.setFont("helvetica", "normal")
 

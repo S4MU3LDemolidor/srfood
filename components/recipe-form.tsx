@@ -1,24 +1,28 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createRecipe, updateRecipe, getClients } from "@/lib/data-manager"
 import type { Recipe, Client } from "@/lib/types"
-import { Camera, Upload, X, ImageIcon } from "lucide-react"
+import { Camera, Upload, X, ImageIcon } from 'lucide-react'
 
 interface RecipeFormProps {
   recipe?: Recipe
-  clients: Client[]
+  clients?: Client[]
 }
 
-export function RecipeForm({ recipe, clients }: RecipeFormProps) {
+const STORAGE_KEY = 'recipe-form-draft'
+
+export function RecipeForm({ recipe, clients: propClients }: RecipeFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [clients, setClients] = useState<Client[]>(propClients || [])
   const [imagePreview, setImagePreview] = useState<string>(recipe?.foto_produto_url || "")
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -36,6 +40,60 @@ export function RecipeForm({ recipe, clients }: RecipeFormProps) {
     client_id: recipe?.client_id || "",
     foto_produto_url: recipe?.foto_produto_url || "",
   })
+
+  // Load clients if not provided
+  useEffect(() => {
+    if (!propClients) {
+      try {
+        const clientsData = getClients()
+        setClients(clientsData)
+        console.log("✅ RECIPE FORM: Loaded clients:", clientsData.length)
+      } catch (error) {
+        console.error("❌ RECIPE FORM: Error loading clients:", error)
+      }
+    }
+  }, [propClients])
+
+  // Load saved form data from localStorage on component mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && !recipe) {
+      try {
+        const savedData = localStorage.getItem(STORAGE_KEY)
+        if (savedData) {
+          const parsedData = JSON.parse(savedData)
+          console.log("📥 RECIPE FORM: Loading saved draft data:", parsedData)
+          setFormData(parsedData)
+          setImagePreview(parsedData.foto_produto_url || "")
+        }
+      } catch (error) {
+        console.error("❌ RECIPE FORM: Error loading saved data:", error)
+      }
+    }
+  }, [recipe])
+
+  // Save form data to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && !recipe && formData.nome_receita) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(formData))
+        console.log("💾 RECIPE FORM: Auto-saved draft data:", formData.nome_receita)
+      } catch (error) {
+        console.error("❌ RECIPE FORM: Error saving draft data:", error)
+      }
+    }
+  }, [formData, recipe])
+
+  // Clear saved draft data from localStorage
+  const clearSavedData = () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(STORAGE_KEY)
+        console.log("🗑️ RECIPE FORM: Cleared saved draft data")
+      } catch (error) {
+        console.error("❌ RECIPE FORM: Error clearing saved data:", error)
+      }
+    }
+  }
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -74,67 +132,63 @@ export function RecipeForm({ recipe, clients }: RecipeFormProps) {
     e.preventDefault()
     setLoading(true)
 
-    console.log("🔍 FORM: Form submitted with data:", JSON.stringify(formData, null, 2))
-    console.log("🔍 FORM: Recipe name:", formData.nome_receita)
-    console.log("🔍 FORM: Is editing existing recipe?", !!recipe)
+    console.log("🔍 RECIPE FORM: Form submitted with data:", JSON.stringify(formData, null, 2))
+    console.log("🔍 RECIPE FORM: Recipe name:", formData.nome_receita)
+    console.log("🔍 RECIPE FORM: Is editing existing recipe?", !!recipe)
 
     try {
       if (recipe) {
-        // Update existing recipe
-        console.log("📝 FORM: Updating existing recipe:", recipe.id)
-        const response = await fetch(`/api/recipes/${recipe.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        })
+        // Update existing recipe - directly use data manager
+        console.log("📝 RECIPE FORM: Updating existing recipe:", recipe.id)
+        const updatedRecipe = updateRecipe(recipe.id, formData)
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("❌ FORM: Update failed:", errorText)
+        if (!updatedRecipe) {
           throw new Error("Failed to update recipe")
         }
 
-        const updatedRecipe = await response.json()
-        console.log("✅ FORM: Recipe updated successfully:", updatedRecipe)
+        console.log("✅ RECIPE FORM: Recipe updated successfully:", updatedRecipe)
         router.push(`/recipes/${recipe.id}`)
       } else {
-        // Create new recipe
-        console.log("🆕 FORM: Creating new recipe")
-        console.log("📤 FORM: Sending data to API:", JSON.stringify(formData, null, 2))
+        // Create new recipe - directly use data manager
+        console.log("🆕 RECIPE FORM: Creating new recipe")
+        console.log("📤 RECIPE FORM: Using data manager directly:", JSON.stringify(formData, null, 2))
 
-        const response = await fetch("/api/recipes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        })
+        const newRecipe = createRecipe(formData)
+        console.log("✅ RECIPE FORM: Recipe created successfully:", newRecipe)
+        console.log("🔍 RECIPE FORM: New recipe ID:", newRecipe.id)
+        console.log("🔍 RECIPE FORM: New recipe name:", newRecipe.nome_receita)
 
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error("❌ FORM: Create failed:", errorText)
-          throw new Error("Failed to create recipe")
-        }
+        // Clear the saved draft data since we successfully created the recipe
+        clearSavedData()
 
-        const newRecipe = await response.json()
-        console.log("✅ FORM: Recipe created successfully:", newRecipe)
-        console.log("🔍 FORM: New recipe ID:", newRecipe.id)
-        console.log("🔍 FORM: New recipe name:", newRecipe.nome_receita)
+        // Dispatch events to notify other components
+        console.log("📡 RECIPE FORM: Dispatching creation events...")
+        window.dispatchEvent(new CustomEvent("dataChanged", { 
+          detail: { type: 'recipe', action: 'create', data: newRecipe } 
+        }))
+        window.dispatchEvent(new StorageEvent("storage", { key: "recipes" }))
 
-        // Make sure we have a valid ID before redirecting
-        if (!newRecipe.id) {
-          console.error("❌ FORM: No ID returned from API!")
-          throw new Error("Recipe created but no ID returned")
-        }
+        // Small delay to ensure events are processed
+        await new Promise(resolve => setTimeout(resolve, 100))
 
-        // Use router.push with the correct ID
-        console.log("🔄 FORM: Redirecting to:", `/recipes/${newRecipe.id}`)
-        router.push(`/recipes/${newRecipe.id}`)
+        // Navigate back to home page
+        console.log("🔄 RECIPE FORM: Navigating back to home page...")
+        router.push("/")
       }
     } catch (error) {
-      console.error("❌ FORM: Error saving recipe:", error)
+      console.error("❌ RECIPE FORM: Error saving recipe:", error)
       alert("Erro ao salvar receita. Tente novamente.")
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleCancel = () => {
+    // Clear saved draft data when canceling
+    if (!recipe) {
+      clearSavedData()
+    }
+    router.back()
   }
 
   return (
@@ -215,7 +269,7 @@ export function RecipeForm({ recipe, clients }: RecipeFormProps) {
               id="nome_receita"
               value={formData.nome_receita}
               onChange={(e) => {
-                console.log("🔍 FORM: Recipe name changed to:", e.target.value)
+                console.log("🔍 RECIPE FORM: Recipe name changed to:", e.target.value)
                 setFormData({ ...formData, nome_receita: e.target.value })
               }}
               required
@@ -343,7 +397,7 @@ export function RecipeForm({ recipe, clients }: RecipeFormProps) {
           <Button type="submit" disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
             {loading ? "Salvando..." : recipe ? "Atualizar Receita" : "Criar Receita"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.back()} className="flex-1">
+          <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
             Cancelar
           </Button>
         </div>

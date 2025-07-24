@@ -3,7 +3,7 @@ import { getIngredientsByRecipeId, createIngredient } from "@/lib/data-manager"
 
 export async function GET(request: Request, { params }: { params: { recipeId: string } }) {
   try {
-    const ingredients = await getIngredientsByRecipeId(params.recipeId)
+    const ingredients = getIngredientsByRecipeId(params.recipeId)
     return NextResponse.json(ingredients)
   } catch (error) {
     console.error("Error fetching ingredients:", error)
@@ -14,7 +14,7 @@ export async function GET(request: Request, { params }: { params: { recipeId: st
 export async function POST(request: Request, { params }: { params: { recipeId: string } }) {
   try {
     const body = await request.json()
-    const ingredient = await createIngredient({
+    const ingredient = createIngredient({
       ...body,
       ficha_id: params.recipeId,
     })
