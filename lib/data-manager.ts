@@ -1,575 +1,321 @@
-import type { Client, Recipe, Ingredient, Step } from "./types"
+import type { Recipe, Client, Ingredient, Step } from "./types"
 
-// Check if we're in browser environment
-function isBrowser(): boolean {
-  const result = typeof window !== "undefined" && typeof window.localStorage !== "undefined"
-  console.log(`🌐 BROWSER CHECK: ${result ? 'IN BROWSER' : 'NOT IN BROWSER'}`)
-  return result
-}
-
-function generateId(): string {
-  const id = Date.now().toString() + Math.random().toString(36).substr(2, 9)
-  console.log(`🆔 GENERATED ID: ${id}`)
+// Generate a unique ID
+export function generateId(): string {
+  const timestamp = Date.now().toString()
+  const random = Math.random().toString(36).substr(2, 9)
+  const id = `${timestamp}_${random}`
+  console.log("🆔 DATA MANAGER: Generated new ID:", id)
   return id
 }
 
-// ==================== LOCALSTORAGE HELPERS ====================
-
-function getFromStorage<T>(key: string): T[] {
-  console.log(`🔍 GET FROM STORAGE: ${key}`)
-  
-  if (!isBrowser()) {
-    console.log(`⚠️ NOT IN BROWSER - returning empty array for ${key}`)
+// Generic storage functions with better error handling
+export function getFromStorage<T>(key: string): T[] {
+  if (typeof window === "undefined") {
+    console.log("🔍 DATA MANAGER: Server-side rendering, returning empty array for", key)
     return []
   }
 
   try {
-    console.log(`📖 READING localStorage.getItem('${key}')`)
-    const data = window.localStorage.getItem(key)
-    console.log(`📄 RAW DATA for ${key}:`, data ? `${data.length} characters` : 'null')
-    
+    const data = localStorage.getItem(key)
+    console.log(`🔍 DATA MANAGER: Getting ${key} from storage:`, data ? `${data.length} chars` : "null")
+
     if (!data) {
-      console.log(`📭 NO DATA for ${key} - returning empty array`)
+      console.log(`📝 DATA MANAGER: No data found for ${key}, returning empty array`)
       return []
     }
-    
+
     const parsed = JSON.parse(data)
-    console.log(`✅ PARSED ${key}: ${Array.isArray(parsed) ? parsed.length : 'not array'} items`)
-    
+    console.log(`📊 DATA MANAGER: Parsed ${key}:`, Array.isArray(parsed) ? `${parsed.length} items` : typeof parsed)
+
     return Array.isArray(parsed) ? parsed : []
   } catch (error) {
-    console.error(`❌ ERROR reading ${key} from localStorage:`, error)
+    console.error(`❌ DATA MANAGER: Error parsing ${key} from localStorage:`, error)
     return []
   }
 }
 
-function saveToStorage<T>(key: string, data: T[]): void {
-  console.log(`💾 SAVE TO STORAGE: ${key} (${data.length} items)`)
-  
-  if (!isBrowser()) {
-    console.log(`⚠️ NOT IN BROWSER - cannot save ${key}`)
+export function saveToStorage<T>(key: string, data: T[]): void {
+  if (typeof window === "undefined") {
+    console.log("💾 DATA MANAGER: Server-side rendering, skipping save for", key)
     return
   }
 
   try {
+    console.log(
+      `💾 DATA MANAGER: Saving ${key} to storage:`,
+      Array.isArray(data) ? `${data.length} items` : typeof data,
+    )
+
     const jsonData = JSON.stringify(data)
-    console.log(`📝 SAVING ${key}: ${jsonData.length} characters`)
-    
-    window.localStorage.setItem(key, jsonData)
-    console.log(`✅ SAVED ${key} successfully`)
+    localStorage.setItem(key, jsonData)
 
-    // Verify the save worked
-    const verification = window.localStorage.getItem(key)
-    if (verification) {
-      console.log(`✅ VERIFICATION: ${key} confirmed in localStorage`)
+    console.log(`✅ DATA MANAGER: Successfully saved ${key} (${jsonData.length} chars)`)
+
+    // Dispatch storage event for cross-component updates
+    window.dispatchEvent(new StorageEvent("storage", { key }))
+  } catch (error) {
+    console.error(`❌ DATA MANAGER: Error saving ${key} to localStorage:`, error)
+  }
+}
+
+// Recipe functions
+export function getRecipes(): Recipe[] {
+  return getFromStorage<Recipe>("recipes")
+}
+
+export function getRecipeById(id: string): Recipe | null {
+  const recipes = getRecipes()
+  return recipes.find((recipe) => recipe.id === id) || null
+}
+
+export function saveRecipe(recipe: Recipe): boolean {
+  try {
+    const recipes = getRecipes()
+    const existingIndex = recipes.findIndex((r) => r.id === recipe.id)
+
+    if (existingIndex >= 0) {
+      recipes[existingIndex] = recipe
+      console.log("📝 DATA MANAGER: Updated existing recipe:", recipe.id)
     } else {
-      console.error(`❌ VERIFICATION FAILED: ${key} not found after save`)
+      if (!recipe.id) {
+        recipe.id = generateId()
+      }
+      recipes.push(recipe)
+      console.log("📝 DATA MANAGER: Added new recipe:", recipe.id)
     }
 
-    // Dispatch custom event to notify components
-    if (typeof window !== "undefined") {
-      console.log(`📡 DISPATCHING dataChanged event for ${key}`)
-      window.dispatchEvent(
-        new CustomEvent("dataChanged", {
-          detail: { key, count: data.length },
-        }),
-      )
-    }
-  } catch (error) {
-    console.error(`❌ ERROR saving ${key} to localStorage:`, error)
-  }
-}
-
-// ==================== CLIENTS CRUD ====================
-
-export function getClients(): Client[] {
-  console.log(`🔍 GET CLIENTS CALLED`)
-  try {
-    const clients = getFromStorage<Client>("clients")
-    console.log(`📊 RETURNING ${clients.length} clients`)
-    return clients
-  } catch (error) {
-    console.error(`❌ ERROR in getClients:`, error)
-    return []
-  }
-}
-
-export function getClientById(id: string): Client | null {
-  console.log(`🔍 SEARCHING CLIENT BY ID: ${id}`)
-  try {
-    const clients = getClients()
-    const found = clients.find((client) => client.id === id) || null
-    console.log(`${found ? '✅ FOUND' : '❌ NOT FOUND'} client:`, found?.name)
-    return found
-  } catch (error) {
-    console.error(`❌ ERROR in getClientById:`, error)
-    return null
-  }
-}
-
-export function createClient(clientData: Omit<Client, "id" | "created_at" | "updated_at">): Client {
-  console.log(`🆕 CREATE CLIENT CALLED:`, clientData.name)
-
-  try {
-    const newClient: Client = {
-      ...clientData,
-      id: generateId(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    console.log(`🆔 NEW CLIENT OBJECT:`, newClient)
-
-    const clients = getClients()
-    console.log(`📊 CURRENT CLIENTS BEFORE ADD:`, clients.length)
-    
-    clients.push(newClient)
-    console.log(`📊 CLIENTS AFTER ADD:`, clients.length)
-    
-    saveToStorage("clients", clients)
-
-    // Verify the client was saved
-    const verification = getClients()
-    console.log(`✅ VERIFICATION: ${verification.length} clients in storage after save`)
-    
-    return newClient
-  } catch (error) {
-    console.error(`❌ ERROR in createClient:`, error)
-    throw error
-  }
-}
-
-export function updateClient(id: string, clientData: Partial<Client>): Client | null {
-  console.log(`📝 UPDATE CLIENT: ${id}`)
-
-  try {
-    const clients = getClients()
-    const clientIndex = clients.findIndex((client) => client.id === id)
-
-    if (clientIndex === -1) {
-      console.log(`❌ CLIENT NOT FOUND: ${id}`)
-      return null
-    }
-
-    const updatedClient: Client = {
-      ...clients[clientIndex],
-      ...clientData,
-      updated_at: new Date().toISOString(),
-    }
-
-    clients[clientIndex] = updatedClient
-    saveToStorage("clients", clients)
-
-    console.log(`✅ CLIENT UPDATED: ${id}`)
-    return updatedClient
-  } catch (error) {
-    console.error(`❌ ERROR in updateClient:`, error)
-    return null
-  }
-}
-
-export function deleteClient(id: string): boolean {
-  console.log(`🗑️ DELETE CLIENT: ${id}`)
-
-  try {
-    if (!id || typeof id !== "string") {
-      console.error(`❌ Invalid client ID: ${id}`)
-      return false
-    }
-
-    const clients = getClients()
-    const initialCount = clients.length
-    const filteredClients = clients.filter((client) => client.id !== id)
-
-    if (filteredClients.length === clients.length) {
-      console.log(`❌ CLIENT NOT FOUND: ${id}`)
-      return false
-    }
-
-    saveToStorage("clients", filteredClients)
-    console.log(`✅ Client ${id} deleted (${initialCount} -> ${filteredClients.length})`)
+    saveToStorage("recipes", recipes)
     return true
   } catch (error) {
-    console.error(`❌ ERROR in deleteClient:`, error)
+    console.error("❌ DATA MANAGER: Error saving recipe:", error)
     return false
   }
 }
 
-// ==================== RECIPES CRUD ====================
-
-export function getRecipes(): Recipe[] {
-  console.log(`🔍 GET RECIPES CALLED`)
-  try {
-    const recipes = getFromStorage<Recipe>("recipes")
-    console.log(`📊 RETURNING ${recipes.length} recipes`)
-    return recipes
-  } catch (error) {
-    console.error(`❌ ERROR in getRecipes:`, error)
-    return []
-  }
-}
-
-export function getRecipeById(id: string): Recipe | null {
-  console.log(`🔍 SEARCHING RECIPE BY ID: ${id}`)
+export function updateRecipe(id: string, updates: Partial<Recipe>): boolean {
   try {
     const recipes = getRecipes()
-    const found = recipes.find((recipe) => recipe.id === id) || null
-    console.log(`${found ? '✅ FOUND' : '❌ NOT FOUND'} recipe:`, found?.nome_receita)
-    return found
-  } catch (error) {
-    console.error(`❌ ERROR in getRecipeById:`, error)
-    return null
-  }
-}
+    const index = recipes.findIndex((recipe) => recipe.id === id)
 
-export function getRecipeWithDetails(id: string): Recipe | null {
-  console.log(`🔍 GET RECIPE WITH DETAILS: ${id}`)
-  try {
-    const recipe = getRecipeById(id)
-    if (!recipe) return null
-
-    const client = recipe.client_id ? getClientById(recipe.client_id) : null
-    const ingredients = getIngredientsByRecipeId(id)
-    const steps = getStepsByRecipeId(id)
-
-    // Add subficha details to ingredients
-    const ingredientsWithSubfichas = ingredients.map((ingredient) => {
-      if (ingredient.subficha_id) {
-        const subficha = getRecipeById(ingredient.subficha_id)
-        return { ...ingredient, subficha }
-      }
-      return ingredient
-    })
-
-    const result = {
-      ...recipe,
-      client: client || undefined,
-      ingredients: ingredientsWithSubfichas,
-      steps,
+    if (index === -1) {
+      console.log("❌ DATA MANAGER: Recipe not found for update:", id)
+      return false
     }
 
-    console.log(`✅ RECIPE WITH DETAILS:`, result.nome_receita, `(${ingredients.length} ingredients, ${steps.length} steps)`)
-    return result
-  } catch (error) {
-    console.error(`❌ ERROR in getRecipeWithDetails:`, error)
-    return null
-  }
-}
-
-export function getRecipesWithClients(): Recipe[] {
-  console.log(`🔍 GET RECIPES WITH CLIENTS CALLED`)
-  try {
-    const recipes = getRecipes()
-    const clients = getClients()
-
-    console.log(`📊 PROCESSING ${recipes.length} recipes with ${clients.length} clients`)
-
-    const result = recipes.map((recipe) => {
-      const client = recipe.client_id ? clients.find((c) => c.id === recipe.client_id) : null
-      return {
-        ...recipe,
-        client: client || undefined,
-      }
-    })
-
-    console.log(`📊 RETURNING ${result.length} recipes with client data`)
-    return result
-  } catch (error) {
-    console.error(`❌ ERROR in getRecipesWithClients:`, error)
-    return []
-  }
-}
-
-export function createRecipe(recipeData: Omit<Recipe, "id" | "created_at" | "updated_at">): Recipe {
-  console.log(`🆕 CREATE RECIPE CALLED:`, recipeData.nome_receita)
-
-  try {
-    const newRecipe: Recipe = {
-      ...recipeData,
-      id: generateId(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }
-
-    console.log(`🆔 NEW RECIPE OBJECT:`, newRecipe)
-
-    const recipes = getRecipes()
-    console.log(`📊 CURRENT RECIPES BEFORE ADD:`, recipes.length)
-    
-    recipes.push(newRecipe)
-    console.log(`📊 RECIPES AFTER ADD:`, recipes.length)
-    
+    recipes[index] = { ...recipes[index], ...updates }
     saveToStorage("recipes", recipes)
-
-    // Verify the recipe was saved
-    const verification = getRecipes()
-    console.log(`✅ VERIFICATION: ${verification.length} recipes in storage after save`)
-    
-    return newRecipe
+    console.log("✅ DATA MANAGER: Recipe updated:", id)
+    return true
   } catch (error) {
-    console.error(`❌ ERROR in createRecipe:`, error)
-    throw error
-  }
-}
-
-export function updateRecipe(id: string, recipeData: Partial<Recipe>): Recipe | null {
-  console.log(`📝 UPDATE RECIPE: ${id}`)
-
-  try {
-    const recipes = getRecipes()
-    const recipeIndex = recipes.findIndex((recipe) => recipe.id === id)
-
-    if (recipeIndex === -1) {
-      console.log(`❌ RECIPE NOT FOUND: ${id}`)
-      return null
-    }
-
-    const updatedRecipe: Recipe = {
-      ...recipes[recipeIndex],
-      ...recipeData,
-      updated_at: new Date().toISOString(),
-    }
-
-    recipes[recipeIndex] = updatedRecipe
-    saveToStorage("recipes", recipes)
-
-    console.log(`✅ RECIPE UPDATED: ${id}`)
-    return updatedRecipe
-  } catch (error) {
-    console.error(`❌ ERROR in updateRecipe:`, error)
-    return null
+    console.error("❌ DATA MANAGER: Error updating recipe:", error)
+    return false
   }
 }
 
 export function deleteRecipe(id: string): boolean {
-  console.log(`🗑️ DELETE RECIPE: ${id}`)
-
   try {
-    if (!id || typeof id !== "string") {
-      console.error(`❌ Invalid recipe ID: ${id}`)
+    console.log("🗑️ DATA MANAGER: Deleting recipe:", id)
+
+    // Delete the recipe
+    const recipes = getRecipes()
+    const filteredRecipes = recipes.filter((recipe) => recipe.id !== id)
+
+    if (filteredRecipes.length === recipes.length) {
+      console.log("❌ DATA MANAGER: Recipe not found for deletion:", id)
       return false
     }
 
-    // Delete recipe and related data
-    const recipes = getRecipes()
+    saveToStorage("recipes", filteredRecipes)
+
+    // Delete associated ingredients
     const ingredients = getIngredients()
+    const filteredIngredients = ingredients.filter((ingredient) => ingredient.recipe_id !== id)
+    saveToStorage("ingredients", filteredIngredients)
+
+    // Delete associated steps
     const steps = getSteps()
+    const filteredSteps = steps.filter((step) => step.recipe_id !== id)
+    saveToStorage("steps", filteredSteps)
 
-    const filteredRecipes = recipes.filter((recipe) => recipe.id !== id)
-    const filteredIngredients = ingredients.filter((ingredient) => ingredient.ficha_id !== id)
-    const filteredSteps = steps.filter((step) => step.ficha_id !== id)
-
-    const recipeDeleted = filteredRecipes.length !== recipes.length
-    const ingredientsDeleted = ingredients.length - filteredIngredients.length
-    const stepsDeleted = steps.length - filteredSteps.length
-
-    console.log(`🔄 DELETION RESULTS:`)
-    console.log(`  - Recipe: ${recipeDeleted ? "✅ SUCCESS" : "❌ FAILED"}`)
-    console.log(`  - Ingredients: ${ingredientsDeleted} deleted`)
-    console.log(`  - Steps: ${stepsDeleted} deleted`)
-
-    if (recipeDeleted) {
-      saveToStorage("recipes", filteredRecipes)
-      saveToStorage("ingredients", filteredIngredients)
-      saveToStorage("steps", filteredSteps)
-      console.log(`✅ Recipe ${id} successfully deleted`)
-    }
-
-    return recipeDeleted
+    console.log("✅ DATA MANAGER: Recipe and associated data deleted:", id)
+    return true
   } catch (error) {
-    console.error(`❌ ERROR in deleteRecipe:`, error)
+    console.error("❌ DATA MANAGER: Error deleting recipe:", error)
     return false
   }
 }
 
-// ==================== INGREDIENTS CRUD ====================
+// Client functions
+export function getClients(): Client[] {
+  return getFromStorage<Client>("clients")
+}
 
-export function getIngredients(): Ingredient[] {
-  console.log(`🔍 GET INGREDIENTS CALLED`)
+export function getClientById(id: string): Client | null {
+  const clients = getClients()
+  return clients.find((client) => client.id === id) || null
+}
+
+export function saveClient(client: Client): boolean {
   try {
-    return getFromStorage<Ingredient>("ingredients")
+    const clients = getClients()
+    const existingIndex = clients.findIndex((c) => c.id === client.id)
+
+    if (existingIndex >= 0) {
+      clients[existingIndex] = client
+      console.log("📝 DATA MANAGER: Updated existing client:", client.id)
+    } else {
+      if (!client.id) {
+        client.id = generateId()
+      }
+      clients.push(client)
+      console.log("📝 DATA MANAGER: Added new client:", client.id)
+    }
+
+    saveToStorage("clients", clients)
+    return true
   } catch (error) {
-    console.error(`❌ ERROR in getIngredients:`, error)
-    return []
+    console.error("❌ DATA MANAGER: Error saving client:", error)
+    return false
   }
+}
+
+export function updateClient(id: string, updates: Partial<Client>): boolean {
+  try {
+    const clients = getClients()
+    const index = clients.findIndex((client) => client.id === id)
+
+    if (index === -1) {
+      console.log("❌ DATA MANAGER: Client not found for update:", id)
+      return false
+    }
+
+    clients[index] = { ...clients[index], ...updates }
+    saveToStorage("clients", clients)
+    console.log("✅ DATA MANAGER: Client updated:", id)
+    return true
+  } catch (error) {
+    console.error("❌ DATA MANAGER: Error updating client:", error)
+    return false
+  }
+}
+
+export function deleteClient(id: string): boolean {
+  try {
+    console.log("🗑️ DATA MANAGER: Deleting client:", id)
+
+    const clients = getClients()
+    const filteredClients = clients.filter((client) => client.id !== id)
+
+    if (filteredClients.length === clients.length) {
+      console.log("❌ DATA MANAGER: Client not found for deletion:", id)
+      return false
+    }
+
+    saveToStorage("clients", filteredClients)
+    console.log("✅ DATA MANAGER: Client deleted:", id)
+    return true
+  } catch (error) {
+    console.error("❌ DATA MANAGER: Error deleting client:", error)
+    return false
+  }
+}
+
+// Combined functions
+export function getRecipesWithClients(): (Recipe & { client?: Client })[] {
+  const recipes = getRecipes()
+  const clients = getClients()
+
+  return recipes.map((recipe) => ({
+    ...recipe,
+    client: recipe.client_id ? clients.find((client) => client.id === recipe.client_id) : undefined,
+  }))
+}
+
+// Ingredient functions
+export function getIngredients(): Ingredient[] {
+  return getFromStorage<Ingredient>("ingredients")
 }
 
 export function getIngredientsByRecipeId(recipeId: string): Ingredient[] {
-  console.log(`🔍 GET INGREDIENTS FOR RECIPE: ${recipeId}`)
-  try {
-    const ingredients = getIngredients()
-    const filtered = ingredients.filter((ingredient) => ingredient.ficha_id === recipeId).sort((a, b) => a.ordem - b.ordem)
-    console.log(`📊 FOUND ${filtered.length} ingredients for recipe ${recipeId}`)
-    return filtered
-  } catch (error) {
-    console.error(`❌ ERROR in getIngredientsByRecipeId:`, error)
-    return []
-  }
+  const ingredients = getIngredients()
+  return ingredients.filter((ingredient) => ingredient.recipe_id === recipeId)
 }
 
-export function createIngredient(ingredientData: Omit<Ingredient, "id" | "created_at">): Ingredient {
-  console.log(`🆕 CREATE INGREDIENT:`, ingredientData.ingrediente)
-
-  try {
-    const newIngredient: Ingredient = {
-      ...ingredientData,
-      id: generateId(),
-      created_at: new Date().toISOString(),
-    }
-
-    const ingredients = getIngredients()
-    ingredients.push(newIngredient)
-    saveToStorage("ingredients", ingredients)
-
-    console.log(`✅ INGREDIENT CREATED: ${newIngredient.id}`)
-    return newIngredient
-  } catch (error) {
-    console.error(`❌ ERROR in createIngredient:`, error)
-    throw error
-  }
-}
-
-export function updateIngredient(id: string, ingredientData: Partial<Ingredient>): Ingredient | null {
-  console.log(`📝 UPDATE INGREDIENT: ${id}`)
-
+export function saveIngredient(ingredient: Ingredient): boolean {
   try {
     const ingredients = getIngredients()
-    const ingredientIndex = ingredients.findIndex((ingredient) => ingredient.id === id)
+    const existingIndex = ingredients.findIndex((i) => i.id === ingredient.id)
 
-    if (ingredientIndex === -1) {
-      console.log(`❌ INGREDIENT NOT FOUND: ${id}`)
-      return null
+    if (existingIndex >= 0) {
+      ingredients[existingIndex] = ingredient
+    } else {
+      if (!ingredient.id) {
+        ingredient.id = generateId()
+      }
+      ingredients.push(ingredient)
     }
 
-    const updatedIngredient: Ingredient = {
-      ...ingredients[ingredientIndex],
-      ...ingredientData,
-    }
-
-    ingredients[ingredientIndex] = updatedIngredient
     saveToStorage("ingredients", ingredients)
-
-    console.log(`✅ INGREDIENT UPDATED: ${id}`)
-    return updatedIngredient
+    return true
   } catch (error) {
-    console.error(`❌ ERROR in updateIngredient:`, error)
-    return null
+    console.error("❌ DATA MANAGER: Error saving ingredient:", error)
+    return false
   }
 }
 
 export function deleteIngredient(id: string): boolean {
-  console.log(`🗑️ DELETE INGREDIENT: ${id}`)
-
   try {
     const ingredients = getIngredients()
     const filteredIngredients = ingredients.filter((ingredient) => ingredient.id !== id)
-
-    if (filteredIngredients.length === ingredients.length) {
-      console.log(`❌ INGREDIENT NOT FOUND: ${id}`)
-      return false
-    }
-
     saveToStorage("ingredients", filteredIngredients)
-    console.log(`✅ INGREDIENT DELETED: ${id}`)
     return true
   } catch (error) {
-    console.error(`❌ ERROR in deleteIngredient:`, error)
+    console.error("❌ DATA MANAGER: Error deleting ingredient:", error)
     return false
   }
 }
 
-// ==================== STEPS CRUD ====================
-
+// Step functions
 export function getSteps(): Step[] {
-  console.log(`🔍 GET STEPS CALLED`)
-  try {
-    return getFromStorage<Step>("steps")
-  } catch (error) {
-    console.error(`❌ ERROR in getSteps:`, error)
-    return []
-  }
+  return getFromStorage<Step>("steps")
 }
 
 export function getStepsByRecipeId(recipeId: string): Step[] {
-  console.log(`🔍 GET STEPS FOR RECIPE: ${recipeId}`)
-  try {
-    const steps = getSteps()
-    const filtered = steps.filter((step) => step.ficha_id === recipeId).sort((a, b) => a.ordem - b.ordem)
-    console.log(`📊 FOUND ${filtered.length} steps for recipe ${recipeId}`)
-    return filtered
-  } catch (error) {
-    console.error(`❌ ERROR in getStepsByRecipeId:`, error)
-    return []
-  }
+  const steps = getSteps()
+  return steps.filter((step) => step.recipe_id === recipeId)
 }
 
-export function createStep(stepData: Omit<Step, "id" | "created_at">): Step {
-  console.log(`🆕 CREATE STEP FOR RECIPE: ${stepData.ficha_id}`)
-
-  try {
-    const newStep: Step = {
-      ...stepData,
-      id: generateId(),
-      created_at: new Date().toISOString(),
-    }
-
-    const steps = getSteps()
-    steps.push(newStep)
-    saveToStorage("steps", steps)
-
-    console.log(`✅ STEP CREATED: ${newStep.id}`)
-    return newStep
-  } catch (error) {
-    console.error(`❌ ERROR in createStep:`, error)
-    throw error
-  }
-}
-
-export function updateStep(id: string, stepData: Partial<Step>): Step | null {
-  console.log(`📝 UPDATE STEP: ${id}`)
-
+export function saveStep(step: Step): boolean {
   try {
     const steps = getSteps()
-    const stepIndex = steps.findIndex((step) => step.id === id)
+    const existingIndex = steps.findIndex((s) => s.id === step.id)
 
-    if (stepIndex === -1) {
-      console.log(`❌ STEP NOT FOUND: ${id}`)
-      return null
+    if (existingIndex >= 0) {
+      steps[existingIndex] = step
+    } else {
+      if (!step.id) {
+        step.id = generateId()
+      }
+      steps.push(step)
     }
 
-    const updatedStep: Step = {
-      ...steps[stepIndex],
-      ...stepData,
-    }
-
-    steps[stepIndex] = updatedStep
     saveToStorage("steps", steps)
-
-    console.log(`✅ STEP UPDATED: ${id}`)
-    return updatedStep
+    return true
   } catch (error) {
-    console.error(`❌ ERROR in updateStep:`, error)
-    return null
+    console.error("❌ DATA MANAGER: Error saving step:", error)
+    return false
   }
 }
 
 export function deleteStep(id: string): boolean {
-  console.log(`🗑️ DELETE STEP: ${id}`)
-
   try {
     const steps = getSteps()
     const filteredSteps = steps.filter((step) => step.id !== id)
-
-    if (filteredSteps.length === steps.length) {
-      console.log(`❌ STEP NOT FOUND: ${id}`)
-      return false
-    }
-
     saveToStorage("steps", filteredSteps)
-    console.log(`✅ STEP DELETED: ${id}`)
     return true
   } catch (error) {
-    console.error(`❌ ERROR in deleteStep:`, error)
+    console.error("❌ DATA MANAGER: Error deleting step:", error)
     return false
   }
 }

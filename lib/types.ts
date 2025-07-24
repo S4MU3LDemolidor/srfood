@@ -10,6 +10,9 @@ export interface Recipe {
   id: string
   nome_receita: string
   tipo_ficha: "Normal" | "Subficha"
+  client_id?: string
+  client?: Client
+  foto_produto_url?: string
   tempo_preparo?: string
   rendimento?: string
   peso_preparacao?: string
@@ -17,11 +20,8 @@ export interface Recipe {
   utensilios_necessarios?: string
   realizado_por?: string
   aprovado_por?: string
-  foto_produto_url?: string
-  client_id?: string
   created_at: string
   updated_at: string
-  client?: Client
   ingredients?: Ingredient[]
   steps?: Step[]
 }
@@ -33,9 +33,9 @@ export interface Ingredient {
   quantidade?: string
   medida_caseira?: string
   subficha_id?: string
+  subficha?: Recipe
   ordem: number
   created_at: string
-  subficha?: Recipe
 }
 
 export interface Step {

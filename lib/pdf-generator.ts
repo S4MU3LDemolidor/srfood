@@ -7,7 +7,7 @@ async function loadImage(src: string): Promise<HTMLImageElement> {
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => resolve(img)
-    img.onerror = reject
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`))
     img.src = src
   })
 }
@@ -32,305 +32,438 @@ function calculateImageDimensions(
   return { width, height }
 }
 
-// Helper function to load the Sr. Food Safety logo
-async function loadSrFoodSafetyLogo(): Promise<string> {
-  try {
-    const response = await fetch("/images/sr-food-safety-logo.png")
-    const blob = await response.blob()
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(blob)
-    })
-  } catch (error) {
-    console.log("Could not load Sr. Food Safety logo:", error)
-    return ""
+// Helper function to add a styled section header
+function addSectionHeader(pdf: jsPDF, title: string, yPos: number): number {
+  // Background for section header
+  pdf.setFillColor(248, 250, 252) // gray-50
+  pdf.rect(15, yPos - 8, 180, 16, "F")
+
+  // Border
+  pdf.setDrawColor(16, 185, 129) // emerald-500
+  pdf.setLineWidth(0.8)
+  pdf.line(15, yPos - 8, 195, yPos - 8)
+
+  // Title text
+  pdf.setTextColor(16, 185, 129) // emerald-500
+  pdf.setFontSize(14)
+  pdf.setFont("helvetica", "bold")
+  pdf.text(title, 20, yPos)
+
+  return yPos + 20
+}
+
+// Helper function to add a styled info box
+function addInfoBox(pdf: jsPDF, title: string, content: string, x: number, y: number, width: number): void {
+  // Box background
+  pdf.setFillColor(255, 255, 255)
+  pdf.rect(x, y, width, 20, "F")
+
+  // Box border
+  pdf.setDrawColor(229, 231, 235) // gray-200
+  pdf.setLineWidth(0.5)
+  pdf.rect(x, y, width, 20, "D")
+
+  // Title
+  pdf.setTextColor(75, 85, 99) // gray-600
+  pdf.setFontSize(8)
+  pdf.setFont("helvetica", "bold")
+  pdf.text(title.toUpperCase(), x + 5, y + 8)
+
+  // Content
+  pdf.setTextColor(31, 41, 55) // gray-800
+  pdf.setFontSize(10)
+  pdf.setFont("helvetica", "normal")
+  pdf.text(content, x + 5, y + 16)
+}
+
+// Helper function to check page space
+function checkPageSpace(pdf: jsPDF, currentY: number, requiredSpace: number): number {
+  // If we don't have enough space (considering footer at 280), start new page
+  if (currentY + requiredSpace > 270) {
+    pdf.addPage()
+    return 20 // Return to top margin
   }
+  return currentY
 }
 
 export async function generateRecipePDF(recipe: Recipe): Promise<Blob> {
   const pdf = new jsPDF()
 
   // Set up colors
-  const primaryColor = [16, 185, 129] // emerald-500
-  const textColor = [31, 41, 55] // gray-800
-  const lightGray = [243, 244, 246] // gray-100
+  const primaryColor: [number, number, number] = [16, 185, 129] // emerald-500
+  const primaryDark: [number, number, number] = [5, 150, 105] // emerald-600
+  const textColor: [number, number, number] = [31, 41, 55] // gray-800
+  const textLight: [number, number, number] = [75, 85, 99] // gray-600
+  const lightGray: [number, number, number] = [248, 250, 252] // gray-50
+  const borderGray: [number, number, number] = [229, 231, 235] // gray-200
 
-  let yPosition = 20
+  let yPosition = 25
 
-  // Simple header without logo
-  pdf.setFillColor(...primaryColor)
-  pdf.rect(0, 0, 210, 35, "F")
+  // Enhanced Header with Sr. Food Safety logo
+  pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
+  pdf.rect(0, 0, 210, 60, "F")
 
+  // Add gradient effect with darker shade
+  pdf.setFillColor(primaryDark[0], primaryDark[1], primaryDark[2])
+  pdf.rect(0, 0, 210, 30, "F")
+
+  // Add Sr. Food Safety logo
+  try {
+    const logoImg = await loadImage("/images/sr-food-safety-logo.png")
+    const { width: logoWidth, height: logoHeight } = calculateImageDimensions(logoImg.width, logoImg.height, 80, 25)
+
+    // Center the logo horizontally
+    const logoX = (210 - logoWidth) / 2
+    pdf.addImage("/images/sr-food-safety-logo.png", "PNG", logoX, 8, logoWidth, logoHeight)
+  } catch (error) {
+    // Fallback text
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFontSize(18)
+    pdf.setFont("helvetica", "bold")
+    const fallbackText = "Sr. FOOD SAFETY"
+    const fallbackWidth = pdf.getTextWidth(fallbackText)
+    const fallbackX = (210 - fallbackWidth) / 2
+    pdf.text(fallbackText, fallbackX, 20)
+  }
+
+  // Enhanced title with better typography
   pdf.setTextColor(255, 255, 255)
-  pdf.setFontSize(20)
+  pdf.setFontSize(16)
   pdf.setFont("helvetica", "bold")
-  pdf.text("FICHA TÉCNICA DE RECEITA", 20, 25)
+  const titleWidth = pdf.getTextWidth("FICHA TÉCNICA DE RECEITA")
+  const titleX = (210 - titleWidth) / 2
+  pdf.text("FICHA TÉCNICA DE RECEITA", titleX, 50)
 
-  yPosition = 55
+  yPosition = 80
 
-  // Client Section - Name and Logo
+  // Client section with proper spacing
   if (recipe.client) {
-    pdf.setFillColor(248, 250, 252) // light gray background
-    pdf.rect(20, yPosition - 5, 170, 35, "F")
+    pdf.setFillColor(lightGray[0], lightGray[1], lightGray[2])
+    pdf.rect(15, yPosition - 10, 180, 35, "F")
+    pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    pdf.setLineWidth(0.5)
+    pdf.rect(15, yPosition - 10, 180, 35, "D")
 
-    pdf.setTextColor(...textColor)
+    pdf.setTextColor(textColor[0], textColor[1], textColor[2])
     pdf.setFontSize(12)
     pdf.setFont("helvetica", "bold")
-    pdf.text("CLIENTE:", 25, yPosition + 5)
+    pdf.text("CLIENTE:", 20, yPosition)
 
     // Client name
     pdf.setFont("helvetica", "normal")
     pdf.setFontSize(11)
-    pdf.text(recipe.client.name, 25, yPosition + 15)
+    pdf.text(recipe.client.name, 20, yPosition + 12)
 
     // Client logo
     if (recipe.client.logo_url) {
       try {
         const img = await loadImage(recipe.client.logo_url)
         const { width, height } = calculateImageDimensions(img.width, img.height, 30, 25)
-        pdf.addImage(recipe.client.logo_url, "JPEG", 150, yPosition + 2, width, height)
+        pdf.addImage(recipe.client.logo_url, "JPEG", 160, yPosition - 5, width, height)
       } catch (error) {
-        console.log("Could not add client logo to PDF:", error)
         pdf.setFontSize(8)
         pdf.setTextColor(100, 100, 100)
-        pdf.text("[LOGO DO CLIENTE]", 150, yPosition + 15)
+        pdf.text("[LOGO DO CLIENTE]", 160, yPosition + 5)
       }
     }
 
-    yPosition += 45
+    yPosition += 50
   }
 
-  // Recipe title and image section
-  pdf.setTextColor(...textColor)
-  pdf.setFontSize(16)
-  pdf.setFont("helvetica", "bold")
-  pdf.text(recipe.nome_receita, 20, yPosition)
-  yPosition += 15
+  // Recipe name with enhanced styling
+  pdf.setFillColor(lightGray[0], lightGray[1], lightGray[2])
+  pdf.rect(15, yPosition - 10, 180, 25, "F")
+  pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+  pdf.setLineWidth(0.5)
+  pdf.rect(15, yPosition - 10, 180, 25, "D")
 
-  // Add recipe image if available
+  pdf.setTextColor(textColor[0], textColor[1], textColor[2])
+  pdf.setFontSize(18)
+  pdf.setFont("helvetica", "bold")
+
+  // Better centering calculation for recipe name
+  const recipeNameWidth = pdf.getTextWidth(recipe.nome_receita)
+  const recipeNameX = 15 + (180 - recipeNameWidth) / 2 // Center within the container
+  pdf.text(recipe.nome_receita, recipeNameX, yPosition + 2)
+
+  yPosition += 35
+
+  // Recipe image section
   if (recipe.foto_produto_url) {
     try {
       const img = await loadImage(recipe.foto_produto_url)
       const { width, height } = calculateImageDimensions(img.width, img.height, 80, 60)
 
-      // Add a subtle border around the image
-      pdf.setDrawColor(200, 200, 200)
-      pdf.setLineWidth(0.5)
-      pdf.rect(20, yPosition, width + 2, height + 2)
+      // Center the image
+      const imageX = (210 - width) / 2
+
+      // Add white border
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(imageX - 1, yPosition - 1, width + 2, height + 2, "F")
 
       // Add the recipe image
-      pdf.addImage(recipe.foto_produto_url, "JPEG", 21, yPosition + 1, width, height)
+      pdf.addImage(recipe.foto_produto_url, "JPEG", imageX, yPosition, width, height)
 
-      // Add caption
-      pdf.setFontSize(8)
-      pdf.setTextColor(100, 100, 100)
-      pdf.text("Foto da Receita", 20, yPosition + height + 8)
+      // Add border
+      pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+      pdf.setLineWidth(0.8)
+      pdf.rect(imageX - 1, yPosition - 1, width + 2, height + 2, "D")
 
       yPosition += height + 15
     } catch (error) {
-      console.log("Could not add recipe image to PDF:", error)
-      // Fallback: show placeholder
-      pdf.setFillColor(240, 240, 240)
-      pdf.setDrawColor(200, 200, 200)
-      pdf.rect(20, yPosition, 80, 60, "FD")
-
-      pdf.setFontSize(8)
-      pdf.setTextColor(100, 100, 100)
-      pdf.text("[FOTO DA RECEITA]", 25, yPosition + 25)
-      pdf.text("Imagem não disponível", 25, yPosition + 35)
-
-      yPosition += 70
+      yPosition += 10
     }
   }
 
-  // Recipe details
-  pdf.setTextColor(...textColor)
-  pdf.setFontSize(10)
-  pdf.setFont("helvetica", "normal")
+  // Recipe details with enhanced info boxes
+  yPosition = checkPageSpace(pdf, yPosition, 50)
+  yPosition = addSectionHeader(pdf, "INFORMAÇÕES DA RECEITA", yPosition)
 
   const details = [
-    ["Tipo:", recipe.tipo_ficha],
-    ["Tempo de Preparo:", recipe.tempo_preparo || "N/A"],
-    ["Rendimento:", recipe.rendimento || "N/A"],
-    ["Peso da Preparação:", recipe.peso_preparacao || "N/A"],
-    ["Peso da Porção:", recipe.peso_porcao || "N/A"],
-    ["Realizado por:", recipe.realizado_por || "N/A"],
-    ["Aprovado por:", recipe.aprovado_por || "N/A"],
+    ["Tipo", recipe.tipo_ficha],
+    ["Tempo de Preparo", recipe.tempo_preparo || "N/A"],
+    ["Rendimento", recipe.rendimento || "N/A"],
+    ["Peso da Preparação", recipe.peso_preparacao || "N/A"],
+    ["Peso da Porção", recipe.peso_porcao || "N/A"],
+    ["Realizado por", recipe.realizado_por || "N/A"],
+    ["Aprovado por", recipe.aprovado_por || "N/A"],
   ]
 
+  // Arrange details in a grid (3 columns, multiple rows)
+  const boxWidth = 55
+  const boxSpacing = 5
+  let currentRow = 0
+  let currentCol = 0
+
   details.forEach(([label, value]) => {
-    pdf.setFont("helvetica", "bold")
-    pdf.text(label, 20, yPosition)
-    pdf.setFont("helvetica", "normal")
-    pdf.text(value, 60, yPosition)
-    yPosition += 8
+    const x = 20 + currentCol * (boxWidth + boxSpacing)
+    const y = yPosition + currentRow * 25
+
+    addInfoBox(pdf, label, value, x, y, boxWidth)
+
+    currentCol++
+    if (currentCol >= 3) {
+      currentCol = 0
+      currentRow++
+    }
   })
 
-  yPosition += 10
+  yPosition += Math.ceil(details.length / 3) * 25 + 25
+
+  // Utensils section if available
+  if (recipe.utensilios_necessarios) {
+    yPosition = checkPageSpace(pdf, yPosition, 45)
+    yPosition = addSectionHeader(pdf, "UTENSÍLIOS NECESSÁRIOS", yPosition)
+
+    pdf.setFillColor(255, 255, 255)
+    pdf.rect(15, yPosition, 180, 25, "F")
+    pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+    pdf.setLineWidth(0.5)
+    pdf.rect(15, yPosition, 180, 25, "D")
+
+    pdf.setTextColor(textColor[0], textColor[1], textColor[2])
+    pdf.setFontSize(10)
+    pdf.setFont("helvetica", "normal")
+    const utensilLines = pdf.splitTextToSize(recipe.utensilios_necessarios, 170)
+    pdf.text(utensilLines, 20, yPosition + 8)
+
+    yPosition += 40
+  }
 
   // Ingredients section
   if (recipe.ingredients && recipe.ingredients.length > 0) {
-    pdf.setFontSize(14)
-    pdf.setFont("helvetica", "bold")
-    pdf.text("INGREDIENTES", 20, yPosition)
-    yPosition += 10
+    yPosition = checkPageSpace(pdf, yPosition, 60)
+    if (yPosition > 220) {
+      pdf.addPage()
+      yPosition = 20
+    }
 
-    // Table header
-    pdf.setFillColor(...lightGray)
-    pdf.rect(20, yPosition - 5, 170, 8, "F")
+    yPosition = addSectionHeader(pdf, "INGREDIENTES", yPosition)
+
+    // Enhanced table header
+    pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
+    pdf.rect(15, yPosition, 180, 10, "F")
+
+    pdf.setTextColor(255, 255, 255)
     pdf.setFontSize(10)
     pdf.setFont("helvetica", "bold")
-    pdf.text("Ingrediente", 25, yPosition)
-    pdf.text("Quantidade", 100, yPosition)
-    pdf.text("Medida Caseira", 140, yPosition)
+    pdf.text("INGREDIENTE", 20, yPosition + 7)
+    pdf.text("QUANTIDADE", 105, yPosition + 7)
+    pdf.text("MEDIDA CASEIRA", 145, yPosition + 7)
     yPosition += 10
 
     // Table rows
     pdf.setFont("helvetica", "normal")
+    pdf.setFontSize(9)
+
     recipe.ingredients.forEach((ingredient, index) => {
-      if (yPosition > 250) {
+      if (yPosition > 260) {
         pdf.addPage()
         yPosition = 20
       }
 
+      // Alternating row colors
       if (index % 2 === 0) {
-        pdf.setFillColor(250, 250, 250)
-        pdf.rect(20, yPosition - 5, 170, 8, "F")
+        pdf.setFillColor(249, 250, 251)
+      } else {
+        pdf.setFillColor(255, 255, 255)
       }
+      pdf.rect(15, yPosition, 180, 8, "F")
+
+      // Row border
+      pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+      pdf.setLineWidth(0.2)
+      pdf.rect(15, yPosition, 180, 8, "D")
 
       const ingredientName = ingredient.subficha
         ? `${ingredient.subficha.nome_receita} (Subficha)`
         : ingredient.ingrediente
 
-      pdf.text(ingredientName, 25, yPosition)
-      pdf.text(ingredient.quantidade || "", 100, yPosition)
-      pdf.text(ingredient.medida_caseira || "", 140, yPosition)
+      // Ingredient name with special styling for subfichas
+      if (ingredient.subficha) {
+        pdf.setTextColor(59, 130, 246)
+        pdf.setFont("helvetica", "bold")
+      } else {
+        pdf.setTextColor(textColor[0], textColor[1], textColor[2])
+        pdf.setFont("helvetica", "normal")
+      }
+      pdf.text(ingredientName, 20, yPosition + 6)
+
+      // Quantity and measure
+      pdf.setTextColor(textColor[0], textColor[1], textColor[2])
+      pdf.setFont("helvetica", "normal")
+      pdf.text(ingredient.quantidade || "", 105, yPosition + 6)
+      pdf.text(ingredient.medida_caseira || "", 145, yPosition + 6)
+
       yPosition += 8
     })
+
+    yPosition += 15
   }
 
-  yPosition += 15
-
-  // Steps section with photos
+  // Steps section
   if (recipe.steps && recipe.steps.length > 0) {
-    if (yPosition > 230) {
+    yPosition = checkPageSpace(pdf, yPosition, 80)
+    if (yPosition > 180) {
       pdf.addPage()
       yPosition = 20
     }
 
-    pdf.setFontSize(14)
-    pdf.setFont("helvetica", "bold")
-    pdf.text("MODO DE PREPARO", 20, yPosition)
-    yPosition += 15
-
-    pdf.setFontSize(10)
-    pdf.setFont("helvetica", "normal")
+    yPosition = addSectionHeader(pdf, "MODO DE PREPARO", yPosition)
 
     for (let index = 0; index < recipe.steps.length; index++) {
       const step = recipe.steps[index]
 
-      // Calculate space needed for this step
-      const lines = pdf.splitTextToSize(step.passo, 150)
-      const textHeight = lines.length * 5
-      const photoHeight = step.foto_url ? 70 : 0
-      const totalStepHeight = textHeight + photoHeight + 25
+      const lines = pdf.splitTextToSize(step.passo, step.foto_url ? 110 : 160)
+      const textHeight = lines.length * 4
+      const photoHeight = step.foto_url ? 45 : 0
+      const totalStepHeight = Math.max(textHeight + 20, photoHeight + 15)
 
-      // Check if we need a new page
-      if (yPosition + totalStepHeight > 260) {
+      if (yPosition + totalStepHeight > 250) {
         pdf.addPage()
         yPosition = 20
       }
 
-      // Step number and text
+      // Step container
+      pdf.setFillColor(255, 255, 255)
+      pdf.rect(15, yPosition, 180, totalStepHeight, "F")
+      pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+      pdf.setLineWidth(0.3)
+      pdf.rect(15, yPosition, 180, totalStepHeight, "D")
+
+      // Step number circle
+      const stepCircleX = 30
+      const stepCircleY = yPosition + 12
+      pdf.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
+      pdf.circle(stepCircleX, stepCircleY, 6, "F")
+
+      pdf.setTextColor(255, 255, 255)
+      pdf.setFontSize(10)
       pdf.setFont("helvetica", "bold")
-      pdf.text(`${index + 1}º Passo:`, 20, yPosition)
+      const stepNum = (index + 1).toString()
+      const stepNumWidth = pdf.getTextWidth(stepNum)
+      pdf.text(stepNum, stepCircleX - stepNumWidth / 2, stepCircleY + 3)
+
+      // Step text
+      pdf.setTextColor(textColor[0], textColor[1], textColor[2])
+      pdf.setFontSize(9)
       pdf.setFont("helvetica", "normal")
 
-      pdf.text(lines, 20, yPosition + 8)
-      yPosition += 8 + textHeight + 8
-
-      // Add step photo if available
       if (step.foto_url) {
+        // Side-by-side layout: text on left, photo on right
+        pdf.text(lines, 40, yPosition + 8)
+
         try {
           const img = await loadImage(step.foto_url)
-          const { width, height } = calculateImageDimensions(img.width, img.height, 90, 60)
+          const { width, height } = calculateImageDimensions(img.width, img.height, 60, 40)
 
-          // Add a subtle border around the image
-          pdf.setDrawColor(200, 200, 200)
-          pdf.setLineWidth(0.5)
-          pdf.rect(20, yPosition, width + 2, height + 2)
+          // Position photo on the right side
+          const imageX = 135
+          const imageY = yPosition + 5
 
           // Add the image
-          pdf.addImage(step.foto_url, "JPEG", 21, yPosition + 1, width, height)
+          pdf.addImage(step.foto_url, "JPEG", imageX, imageY, width, height)
 
-          // Add caption
-          pdf.setFontSize(8)
-          pdf.setTextColor(100, 100, 100)
-          pdf.text(`Foto do Passo ${index + 1}`, 20, yPosition + height + 8)
-
-          yPosition += height + 15
+          // Thin border
+          pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+          pdf.setLineWidth(0.5)
+          pdf.rect(imageX, imageY, width, height, "D")
         } catch (error) {
-          console.log(`Could not add photo for step ${index + 1}:`, error)
-          // Fallback: show placeholder
-          pdf.setFillColor(240, 240, 240)
-          pdf.setDrawColor(200, 200, 200)
-          pdf.rect(20, yPosition, 90, 60, "FD")
+          // Fallback placeholder
+          pdf.setFillColor(248, 250, 252)
+          pdf.setDrawColor(borderGray[0], borderGray[1], borderGray[2])
+          pdf.rect(135, yPosition + 5, 60, 40, "FD")
 
-          pdf.setFontSize(8)
-          pdf.setTextColor(100, 100, 100)
-          pdf.text(`[FOTO DO PASSO ${index + 1}]`, 25, yPosition + 30)
-          pdf.text("Imagem não disponível", 25, yPosition + 40)
-
-          yPosition += 70
+          pdf.setFontSize(7)
+          pdf.setTextColor(textLight[0], textLight[1], textLight[2])
+          pdf.setFont("helvetica", "italic")
+          const placeholderText = `[FOTO ${index + 1}]`
+          const placeholderWidth = pdf.getTextWidth(placeholderText)
+          pdf.text(placeholderText, 135 + (60 - placeholderWidth) / 2, yPosition + 25)
         }
       } else {
-        yPosition += 15
+        // Full width text when no photo
+        pdf.text(lines, 40, yPosition + 8)
       }
+
+      yPosition += totalStepHeight + 8
     }
+
+    yPosition += 10
   }
 
-  // Load the Sr. Food Safety logo for footer
-  const logoBase64 = await loadSrFoodSafetyLogo()
-
-  // Footer with Sr. Food Safety logo and branding
+  // Enhanced Footer
   const pageCount = pdf.getNumberOfPages()
   for (let i = 1; i <= pageCount; i++) {
     pdf.setPage(i)
 
+    // Footer background
+    pdf.setFillColor(lightGray[0], lightGray[1], lightGray[2])
+    pdf.rect(0, 280, 210, 17, "F")
+
     // Page info
-    pdf.setFontSize(8)
-    pdf.setTextColor(128, 128, 128)
-    pdf.text(`Página ${i} de ${pageCount}`, 170, 290)
+    pdf.setFontSize(9)
+    pdf.setTextColor(textLight[0], textLight[1], textLight[2])
+    pdf.setFont("helvetica", "normal")
+    pdf.text(`Página ${i} de ${pageCount}`, 175, 290)
     pdf.text("Gerado em: " + new Date().toLocaleDateString("pt-BR"), 20, 290)
 
-    // Add Sr. Food Safety logo in footer - centered and larger
-    if (logoBase64) {
-      try {
-        const img = await loadImage(logoBase64)
-        // Make the logo larger and center it
-        const { width, height } = calculateImageDimensions(img.width, img.height, 60, 20)
-        const centerX = (210 - width) / 2 // Center horizontally on A4 page (210mm width)
+    // Add Sr. Food Safety logo in footer
+    try {
+      const logoImg = await loadImage("/images/sr-food-safety-logo.png")
+      const { width, height } = calculateImageDimensions(logoImg.width, logoImg.height, 40, 8)
+      const centerX = (210 - width) / 2
 
-        pdf.addImage(logoBase64, "PNG", centerX, 270, width, height)
-
-        // Add text below the centered logo
-        pdf.setTextColor(...primaryColor)
-        pdf.setFontSize(8)
-        pdf.text("Sistema de Gestão de Receitas", centerX + width / 2 - 30, 285)
-      } catch (error) {
-        console.log("Could not add logo to footer:", error)
-        // Fallback text
-        pdf.setTextColor(...primaryColor)
-        pdf.setFontSize(8)
-        pdf.text("Sr. Food Safety - Sistema de Gestão de Receitas", 70, 280)
-      }
-    } else {
+      pdf.addImage("/images/sr-food-safety-logo.png", "PNG", centerX, 270, width, height)
+    } catch (error) {
       // Fallback text
-      pdf.setTextColor(...primaryColor)
-      pdf.setFontSize(8)
-      pdf.text("Sr. Food Safety - Sistema de Gestão de Receitas", 70, 280)
+      pdf.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+      pdf.setFontSize(9)
+      pdf.setFont("helvetica", "bold")
+      const fallbackText = "Sr. Food Safety - Sistema de Gestão de Receitas"
+      const fallbackTextWidth = pdf.getTextWidth(fallbackText)
+      const fallbackTextX = (210 - fallbackTextWidth) / 2
+      pdf.text(fallbackText, fallbackTextX, 290)
     }
   }
 

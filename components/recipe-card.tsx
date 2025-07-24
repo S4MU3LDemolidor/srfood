@@ -1,13 +1,10 @@
 "use client"
 
-import type React from "react"
-
-import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
+import { useState } from "react"
 import type { Recipe } from "@/lib/types"
-import { Clock, Users, Scale, Edit, Trash2, MoreVertical } from "lucide-react"
+import { Clock, Users, Scale, Edit, MoreVertical, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
@@ -20,74 +17,53 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { deleteRecipe } from "@/lib/data-manager"
 
 interface RecipeCardProps {
   recipe: Recipe
+  onDelete?: () => void
 }
 
-export function RecipeCard({ recipe }: RecipeCardProps) {
+export function RecipeCard({ recipe, onDelete }: RecipeCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const router = useRouter()
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    console.log("Delete button clicked, showing dialog")
-    setShowDeleteDialog(true)
-  }
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
-    setDeleting(true)
+    setIsDeleting(true)
     try {
-      console.log(`Frontend: Deleting recipe with ID: ${recipe.id}`)
-      console.log(`Frontend: Recipe name: ${recipe.nome_receita}`)
+      console.log("🗑️ RECIPE CARD: Deleting recipe:", recipe.id, recipe.nome_receita)
 
-      const response = await fetch(`/api/recipes/${recipe.id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
+      const success = deleteRecipe(recipe.id)
 
-      console.log(`Frontend: Delete response status: ${response.status}`)
-      console.log(`Frontend: Delete response ok: ${response.ok}`)
+      if (success) {
+        console.log("✅ RECIPE CARD: Recipe deleted successfully")
 
-      const responseText = await response.text()
-      console.log(`Frontend: Raw response: ${responseText}`)
+        // Dispatch events to notify other components
+        window.dispatchEvent(
+          new CustomEvent("dataChanged", {
+            detail: { type: "recipe", action: "delete", id: recipe.id },
+          }),
+        )
+        window.dispatchEvent(new StorageEvent("storage", { key: "recipes" }))
 
-      let result
-      try {
-        result = JSON.parse(responseText)
-      } catch (parseError) {
-        console.error("Frontend: Failed to parse response as JSON:", parseError)
-        throw new Error(`Invalid response format: ${responseText}`)
+        // Call onDelete callback if provided
+        onDelete?.()
+
+        setShowDeleteDialog(false)
+      } else {
+        throw new Error("Failed to delete recipe")
       }
-
-      if (!response.ok) {
-        console.error("Frontend: Delete failed:", result)
-        throw new Error(result.error || `HTTP ${response.status}: ${response.statusText}`)
-      }
-
-      console.log("Frontend: Delete successful:", result)
-
-      // Close dialog first
-      setShowDeleteDialog(false)
-
-      // Force a hard refresh to ensure data is reloaded
-      window.location.reload()
     } catch (error) {
-      console.error("Frontend: Error deleting recipe:", error)
-      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido"
-      alert(`Erro ao excluir receita: ${errorMessage}`)
+      console.error("❌ RECIPE CARD: Error deleting recipe:", error)
+      alert("Erro ao excluir receita. Tente novamente.")
     } finally {
-      setDeleting(false)
+      setIsDeleting(false)
     }
   }
 
   return (
     <>
-      <div className="bg-white rounded-lg border border-gray-200 hover:border-emerald-300 transition-colors duration-200 overflow-hidden group relative">
+      <div className="bg-card border border-border hover:border-emerald-300 dark:hover:border-emerald-600 transition-colors duration-200 rounded-lg overflow-hidden group relative">
         {/* Recipe Actions Dropdown */}
         <div className="absolute top-2 right-2 z-10">
           <DropdownMenu>
@@ -95,7 +71,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 w-8 p-0 bg-white/80 hover:bg-white shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-8 w-8 p-0 bg-background/80 hover:bg-background shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -111,7 +87,13 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
                   Editar
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDeleteClick} className="text-red-600 focus:text-red-600 cursor-pointer">
+              <DropdownMenuItem
+                className="flex items-center text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+                onClick={(e) => {
+                  e.preventDefault()
+                  setShowDeleteDialog(true)
+                }}
+              >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Excluir
               </DropdownMenuItem>
@@ -120,7 +102,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
         </div>
 
         <Link href={`/recipes/${recipe.id}`}>
-          <div className="aspect-video relative bg-gray-50">
+          <div className="aspect-video relative bg-muted">
             {recipe.foto_produto_url ? (
               <Image
                 src={recipe.foto_produto_url || "/placeholder.svg"}
@@ -129,7 +111,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
                 className="object-cover group-hover:scale-105 transition-transform duration-200"
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="flex items-center justify-center h-full text-muted-foreground">
                 <Scale className="w-12 h-12" />
               </div>
             )}
@@ -139,17 +121,19 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
             <div className="flex items-center gap-2 mb-2">
               <span
                 className={`px-2 py-1 text-xs rounded-full ${
-                  recipe.tipo_ficha === "Normal" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"
+                  recipe.tipo_ficha === "Normal"
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                    : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
                 }`}
               >
                 {recipe.tipo_ficha}
               </span>
-              {recipe.client && <span className="text-xs text-gray-500">{recipe.client.name}</span>}
+              {recipe.client && <span className="text-xs text-muted-foreground">{recipe.client.name}</span>}
             </div>
 
-            <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{recipe.nome_receita}</h3>
+            <h3 className="font-semibold text-card-foreground mb-2 line-clamp-2">{recipe.nome_receita}</h3>
 
-            <div className="flex items-center gap-4 text-sm text-gray-600">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
               {recipe.tempo_preparo && (
                 <div className="flex items-center gap-1">
                   <Clock className="w-4 h-4" />
@@ -173,14 +157,21 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir Receita</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja excluir "{recipe.nome_receita}"? Esta ação não pode ser desfeita. Todos os
-              ingredientes e passos relacionados também serão excluídos.
+              Tem certeza que deseja excluir a receita "{recipe.nome_receita}"?
+              <br />
+              <br />
+              <strong>Esta ação não pode ser desfeita.</strong> Todos os ingredientes e passos associados também serão
+              removidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} disabled={deleting} className="bg-red-600 hover:bg-red-700">
-              {deleting ? "Excluindo..." : "Excluir"}
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir Receita"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -3,151 +3,81 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { getRecipesWithClients } from "@/lib/data-manager"
-import { Plus, AlertCircle, RefreshCw } from 'lucide-react'
-import { SearchBar } from "@/components/search-bar"
-import type { Recipe } from "@/lib/types"
+import { getRecipesWithClients, getClients } from "@/lib/data-manager"
+import { Plus, ChefHat, Users, BarChart3, FileText } from "lucide-react"
+import { MetricCard } from "@/components/charts/metric-card"
+import type { Recipe, Client } from "@/lib/types"
 
 export default function HomePage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
 
-  const loadRecipes = async () => {
-    console.log("🔍 HOME PAGE: Starting to load recipes...")
-    setLoading(true)
-    setError(null)
-    
+  const loadData = () => {
     try {
-      // Add a small delay to ensure DOM is ready
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      console.log("🔍 HOME PAGE: Calling getRecipesWithClients...")
       const recipesData = getRecipesWithClients()
-      console.log("✅ HOME PAGE: Recipes loaded:", recipesData.length)
-      console.log("📋 HOME PAGE: Recipe names:", recipesData.map((r) => r.nome_receita))
-      
+      const clientsData = getClients()
       setRecipes(recipesData)
+      setClients(clientsData)
     } catch (error) {
-      console.error("❌ HOME PAGE: Error loading recipes:", error)
-      setError(error instanceof Error ? error.message : "Erro desconhecido")
-      setRecipes([])
+      console.error("Error loading data:", error)
     } finally {
-      console.log("✅ HOME PAGE: Loading complete, setting loading to false")
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    console.log("🚀 HOME PAGE: Component mounted, loading recipes...")
-    loadRecipes()
+    setMounted(true)
   }, [])
 
-  // Listen for route changes and page focus
   useEffect(() => {
-    const handleFocus = () => {
-      console.log("👁️ HOME PAGE: Window focused, reloading data...")
-      loadRecipes()
-    }
+    if (!mounted) return
 
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log("📱 HOME PAGE: Page visible, reloading data...")
-        loadRecipes()
-      }
-    }
+    // Initial load
+    loadData()
 
+    // Listen for data changes
     const handleDataChanged = () => {
-      console.log("📡 HOME PAGE: Data changed event received, reloading...")
-      loadRecipes()
+      loadData()
     }
 
-    // Listen for various events
-    window.addEventListener("focus", handleFocus)
-    document.addEventListener("visibilitychange", handleVisibilityChange)
+    const handleStorageChange = () => {
+      loadData()
+    }
+
     window.addEventListener("dataChanged", handleDataChanged)
-    window.addEventListener("storage", handleDataChanged)
+    window.addEventListener("storage", handleStorageChange)
 
     return () => {
-      window.removeEventListener("focus", handleFocus)
-      document.removeEventListener("visibilitychange", handleVisibilityChange)
       window.removeEventListener("dataChanged", handleDataChanged)
-      window.removeEventListener("storage", handleDataChanged)
+      window.removeEventListener("storage", handleStorageChange)
     }
-  }, [])
+  }, [mounted])
 
-  // Force loading to false after 5 seconds as a safety net
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (loading) {
-        console.log("⚠️ HOME PAGE: Loading timeout reached, forcing loading to false")
-        setLoading(false)
-        setError("Timeout ao carregar dados")
-      }
-    }, 5000)
-
-    return () => clearTimeout(timeout)
-  }, [loading])
-
-  if (loading) {
+  if (!mounted || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-          <p className="text-gray-600 text-sm mb-4">Carregando receitas...</p>
-          <Button 
-            onClick={() => {
-              console.log("🔄 HOME PAGE: Force reload button clicked")
-              setLoading(false)
-              loadRecipes()
-            }}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Tentar Novamente
-          </Button>
+          <p className="text-muted-foreground text-sm">Carregando dashboard...</p>
         </div>
       </div>
     )
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-gray-900 mb-2">Erro ao carregar dados</h1>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <div className="flex gap-4 justify-center">
-            <Button onClick={loadRecipes} variant="outline">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Tentar Novamente
-            </Button>
-            <Button onClick={() => window.location.reload()}>
-              Recarregar Página
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const recentRecipes = recipes.slice(-3).reverse()
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-card border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between py-4 sm:py-0 sm:h-16 gap-4 sm:gap-0">
+          <div className="flex flex-col space-y-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:py-0 sm:h-16">
             <div className="flex items-center">
-              <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Ficha Técnica de Receitas</h1>
+              <h1 className="text-lg sm:text-xl font-semibold text-card-foreground">Dashboard - Sr. Food Safety</h1>
             </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
-              <Link href="/clients" className="w-full sm:w-auto">
-                <Button variant="outline" className="w-full sm:w-auto bg-transparent">
-                  Gerenciar Clientes
-                </Button>
-              </Link>
+            <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-4">
               <Link href="/recipes/new" className="w-full sm:w-auto">
                 <Button className="bg-emerald-600 hover:bg-emerald-700 w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
@@ -160,9 +90,148 @@ export default function HomePage() {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Search Bar */}
-        <SearchBar recipes={recipes} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-8">
+        {/* Welcome Section */}
+        <div className="bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20 p-6 rounded-lg border border-emerald-200 dark:border-emerald-800">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-emerald-600 rounded-lg flex items-center justify-center">
+              <ChefHat className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-foreground">Bem-vindo ao Sr. Food Safety</h2>
+              <p className="text-muted-foreground">Sistema completo de gerenciamento de fichas técnicas de receitas</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Overview Metrics */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <MetricCard
+            title="Total de Receitas"
+            value={recipes.length}
+            subtitle="Receitas cadastradas"
+            icon={ChefHat}
+            color="emerald"
+          />
+          <MetricCard
+            title="Clientes Ativos"
+            value={clients.length}
+            subtitle="Clientes cadastrados"
+            icon={Users}
+            color="blue"
+          />
+          <MetricCard
+            title="Receitas Normais"
+            value={recipes.filter((r) => r.tipo_ficha === "Normal").length}
+            subtitle="Fichas principais"
+            icon={FileText}
+            color="purple"
+          />
+          <MetricCard
+            title="Subfichas"
+            value={recipes.filter((r) => r.tipo_ficha === "Subficha").length}
+            subtitle="Receitas auxiliares"
+            icon={BarChart3}
+            color="orange"
+          />
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Link href="/recipes" className="group">
+            <div className="bg-card p-6 rounded-lg border border-border hover:border-emerald-300 dark:hover:border-emerald-600 hover:shadow-md transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-lg group-hover:bg-emerald-200 dark:group-hover:bg-emerald-900/50">
+                  <ChefHat className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-card-foreground">Receitas</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">Visualizar e gerenciar todas as receitas</p>
+            </div>
+          </Link>
+
+          <Link href="/clients" className="group">
+            <div className="bg-card p-6 rounded-lg border border-border hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-lg group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50">
+                  <Users className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-card-foreground">Clientes</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">Gerenciar informações dos clientes</p>
+            </div>
+          </Link>
+
+          <Link href="/statistics" className="group">
+            <div className="bg-card p-6 rounded-lg border border-border hover:border-purple-300 dark:hover:border-purple-600 hover:shadow-md transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 rounded-lg group-hover:bg-purple-200 dark:group-hover:bg-purple-900/50">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-card-foreground">Estatísticas</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">Análises e relatórios detalhados</p>
+            </div>
+          </Link>
+
+          <Link href="/reports" className="group">
+            <div className="bg-card p-6 rounded-lg border border-border hover:border-orange-300 dark:hover:border-orange-600 hover:shadow-md transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="p-2 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded-lg group-hover:bg-orange-200 dark:group-hover:bg-orange-900/50">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-card-foreground">Relatórios</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">Gerar relatórios em PDF</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Recent Recipes */}
+        <div className="bg-card rounded-lg border border-border p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-card-foreground">Receitas Recentes</h3>
+            <Link href="/recipes">
+              <Button variant="outline" size="sm">
+                Ver Todas
+              </Button>
+            </Link>
+          </div>
+
+          {recentRecipes.length > 0 ? (
+            <div className="space-y-4">
+              {recentRecipes.map((recipe) => (
+                <Link key={recipe.id} href={`/recipes/${recipe.id}`}>
+                  <div className="flex items-center gap-4 p-4 border border-border rounded-lg hover:border-emerald-300 dark:hover:border-emerald-600 hover:bg-accent transition-colors">
+                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center">
+                      <ChefHat className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-card-foreground">{recipe.nome_receita}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {recipe.client?.name || "Sem cliente"} • {recipe.tipo_ficha}
+                      </p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {new Date(recipe.created_at).toLocaleDateString("pt-BR")}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <ChefHat className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">Nenhuma receita cadastrada ainda</p>
+              <Link href="/recipes/new">
+                <Button className="bg-emerald-600 hover:bg-emerald-700">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Criar Primeira Receita
+                </Button>
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
